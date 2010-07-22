@@ -2,6 +2,9 @@
 use IO::File;
 #use utf8;
 
+# this is a script to remove certain 
+# items from dictionary definitions
+
 my $INPUT_FILE="c:/temp/def.txt";
 my $OUTPUT_FILE="c:/temp/def-clean.txt";
 
