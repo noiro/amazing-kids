@@ -1,46 +1,106 @@
-use Text::CSV;
-use Text::CSV::Encoded;
+#use Text::CSV;
+#use Text::CSV::Encoded;
 use IO::File;
 
-my $file = 'c://temp//Wordlist.csv';
-my $file2 = 'c://temp//new.txt';
+# you will need to install this package and all the dependencies
+# on windows using ActivePerl, run 'ppm' to install new packages
+# from CPAN
+use Spreadsheet::Read;
+use Data::Dumper;
 
-my $csv = Text::CSV::Encoded->new(
-  { encoding_in => 'iso-8859-1'}
-);
+## TODO:
+## script generates lots of warnings like the following, which is ignoring
+## Use of uninitialized value in join or string at C:/Perl/site/lib/Spreadsheet/ReadSXC.pm line 198.
+## they appears to be benign though
 
-print "reading word list\n";
+######## Constants which you should change as needed ######
 
-open (CSV, "<", $file) or die $!;
-$count = 1;
-while (<CSV>) {
-  if ($csv->parse($_)) {
-      next if ($count++ == 0);
-      my @columns = $csv->fields();
-      #print "@columns\n";
-      $word = $columns[2];
-      $word_idx= lc($word);
-      #print "word=$word\n";
-      $content{$word_idx} = $word;      
-      #last if $count++ > 5;
+# data file name, we assumpt ods files
+my $DATA_FILENAME = "Wordlist20100623.ods";
+
+# The target sheet in the spreadsheet where you store the 
+# words 
+my $TARGET_SHEET = "Word List";
+
+# The columns in spreadsheet to read, note that first column is 
+# column 1 not column zero
+my $TARGET_COL = 3;
+
+# this should be a plain text file used to check for new 
+# words. it would be easier if you just cut-and-paste
+# to replace the contents each time prior to running
+# the perl program
+my $INPUT_FILENAME = 'c://temp//new.txt' ;
+
+############################################################
+
+print "Reading DB\n";
+
+# read data in, surpress populating of individual named cells
+my $ref = ReadData($DATA_FILENAME, cells => false);
+
+# sample read format
+# $ref = [
+#         # Entry 0 is the overall control hash
+#         { sheets  => 2,
+#           sheet   => {
+#             "Sheet 1"   => 1,
+#             "Sheet 2"   => 2,
+#             },
+#           type    => "xls",
+#           parser  => "Spreadsheet::ParseExcel",
+#           version => 0.26,
+#           },
+#         # Entry 1 is the first sheet
+#         { label  => "Sheet 1",
+#           maxrow => 2,
+#           maxcol => 4,
+#           cell   => [ undef,
+#             [ undef, 1 ],
+#             [ undef, undef, undef, undef, undef, "Nugget" ],
+#             ],
+#           A1     => 1,
+#           B5     => "Nugget",
+#           },
+#         # Entry 2 is the second sheet
+#         { label => "Sheet 2",
+#           :
+#         :
+
+print "Number of words read: ", read_word_count($ref), "\n";
+
+for ($i=1; $i < read_word_count($ref); $i++) {
+  $word = read_word_idx($ref, $i);
+  
+  $word_idx=lc($word);
+  #print "word=$word\n";
+  
+  # store orginal content
+  $content{$word_idx} = $word;      
+  #last if $count++ > 5;
+  
+  # rudimentary parsing
+  # we need to account for the input 'word' being
+  # actually a phrase or sentence, in which case
+  # we store the component words 
+
+  @words_arr = split(/\s+/, $word);
+  foreach $w (@words_arr) {
+    # get rid of common punctuactions
+    $w =~ s/[.,\"\-\?\:]//g;
+    next if $word eq "";
+    $words_idx{$w} = $word;
+    #print "sav $w : $word\n";
+  } 
       
-      @words_arr = split(/\s+/, $word);
-      foreach $w (@words_arr) {
-        $w =~ s/[.,\"\-\?\:]//g;
-        next if $word eq "";
-        $words_idx{$w} = $word;
-        #print "sav $w : $word\n";
-      } 
-  } else {
-      my $err = $csv->error_input;
-      print "Failed to parse line: $err";
-  }
-}
-close CSV;
-print "DB total: $count lines...\n";
+  #print "[$i]\t", $word, "\n";
+  #last if ($i ==10);
+}  
 
-my $fh = new IO::File($file2);
-defined($fh) or die "cannot open file $file2: $!";
+print "DB total: $i lines...\n";
+
+my $fh = new IO::File($INPUT_FILENAME);
+defined($fh) or die "cannot open file $INPUT_FILENAME: $!";
 
 my $i = 0;
 my $iNotFound=0;
@@ -98,22 +158,27 @@ sub check_word {
   }
   
   # check for look alikes
-  my $w2 = $w;
-  my @alt = ();
-  $w2 =~ s/s$//;
-  push(@alt, $w2);
-  
-  $w2 = $w; $w2 =~ s/s$//; push(@alt, $w2);
-  $w2 = $w; $w2 =~ s/ed$//; push(@alt, $w2);  
-  $w2 = $w; $w2 =~ s/d$//; push(@alt, $w2); # cater to words like released
+  # note that the assumption here is that we have the root word in the
+  # database
+  my @subs = (
+  [qr/ed$/i, ""],  # words like played   
+  [qr/ed$/i, "e"],  # words like released
+  [qr/s$/i, ""],   # words like plays  
+  [qr/ies$/i, "y"],    # words like flies
+  [qr/ing$/i, ""],    # words like playing  
+  );
 
-  foreach $w2 (@alt) {  
+  foreach $r (@subs) {
+    #print $r->[0], "===>", $r->[1], "\n";
+    $w2 = $w;
+    $w2 =~ s/$r->[0]/$r->[1]/i;
+    # check against the variant
     if ($content{lc($w2)}) {
       $ret = "FOUND $word like $w2";
       #print "XXX", $ret, "\n";
       return $ret;
-    }
-  }    
+    }    
+  }
   
   my $c = $words_idx{$w};
   if ($c && $c ne $w) {
@@ -121,4 +186,19 @@ sub check_word {
     $ret = "RELATED to [$c]";
   }
   return $ret;
+}
+
+# define some helper apps to abstract the references to the sheets  
+sub read_word_count() {
+  my $ref = shift;
+  my $sheet_num = $ref->[0]{sheet}{$TARGET_SHEET};
+  return $ref->[$sheet_num]{maxrow}; 
+}         
+
+sub read_word_idx() {
+  my($ref,$idx) = @_;
+  my $sheet_num = $ref->[0]{sheet}{$TARGET_SHEET};
+  #$cell = cr2cell(2,$ix);
+  #print "getting cell $cell\n";
+  return $ref->[$sheet_num]{cell}[$TARGET_COL][$idx];
 }
