@@ -144,11 +144,16 @@ while (<$fh>) {
 }
 
 print "=== list of words not found (count=$iNotFound) ===\n";
-print $FOUND_WORDS,"\n";
+print clean_word($FOUND_WORDS),"\n";
 print "=== list of similar ===\n";
 print $LIKE,"\n";
 print "END checked $i lines\n";
 
+sub clean_word {
+  my $w = shift;
+  $w =~ s/[\,\.\?\;\:\“\(\)\”]//g;
+  return $w;
+}
 
 #$sentence = join(" ",@ARGV);
 #$found=check_word($sentence);
@@ -158,7 +163,7 @@ print "END checked $i lines\n";
 
 sub canonical_word {
   my $w = $_[0];
-  $w =~ s/[`“”\.\,\!\"\-\?\:\(\)\']//g;
+  $w =~ s/[\`\“\”\.\,\!\"\-\?\:\;\(\)\'\’]//g;
   
   return lc($w);
 }
@@ -192,7 +197,16 @@ sub check_word {
   [qr/s$/i, ""],   # words like plays  
   [qr/ies$/i, "y"],    # words like flies
   [qr/ing$/i, ""],    # words like playing
+  [qr/ing$/i, "e"],    # words like determining
   [qr/ly$/i, ""],    # words like bitterly  
+  [qr/al$/i, ""],    # words like national
+  [qr/ion$/i, ""],    # words like construction
+  [qr/ion$/i, "e"],    # words like construction
+  [qr/ness$/i, ""],    # words like construction
+  [qr/less$/i, ""],    # words like construction
+  [qr/er$/i, ""],    # words like construction
+  [qr/er$/i, "e"],    # words like construction
+  [qr/est$/i, ""],    # words like construction
   );
 
   foreach $r (@subs) {
